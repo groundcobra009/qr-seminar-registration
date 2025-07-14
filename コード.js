@@ -22,10 +22,7 @@ function onOpen() {
     .addItem('📋 システム設定', 'showSettingsDialog')
     .addItem('🚀 デプロイエンドポイント設定', 'setActualDeployEndpoint')
     .addSeparator()
-    .addSubMenu(ui.createMenu('⚙️ トリガー設定')
-      .addItem('🔧 フォーム送信トリガー設定', 'setupFormSubmitTrigger')
-      .addItem('🗑️ フォーム送信トリガー削除', 'deleteFormSubmitTrigger')
-      .addItem('📋 現在のトリガー確認', 'showCurrentTriggers'))
+    .addItem('⚙️ トリガー設定手順', 'showTriggerSetupGuide')
     .addSeparator()
     .addItem('🔗 URL一括生成', 'generateUrls')
     .addSubMenu(ui.createMenu('📱 QRコード生成')
@@ -851,153 +848,40 @@ function onFormSubmit(e) {
 }
 
 /**
- * フォーム送信トリガーを設定
+ * トリガー設定の手順ガイドを表示
  */
-function setupFormSubmitTrigger() {
-  try {
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // 既存のフォーム送信トリガーを削除
-    deleteFormSubmitTrigger();
-    
-    // フォームが関連付けられているかチェック
-    try {
-      // フォーム送信トリガーを試行
-      ScriptApp.newTrigger('onFormSubmit')
-        .onFormSubmit()
-        .create();
-      
-      SpreadsheetApp.getUi().alert(
-        'トリガー設定完了',
-        'フォーム送信トリガーが正常に設定されました。\n\nフォームに新しい回答が来ると、自動的にトークン・URL・QRコードが生成されます。',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-      
-      console.log('フォーム送信トリガーを設定しました');
-      
-    } catch (formError) {
-      console.warn('フォーム送信トリガー設定失敗、スプレッドシート変更トリガーにフォールバック:', formError);
-      
-      // フォールバック：スプレッドシート変更トリガーを設定
-      ScriptApp.newTrigger('onEdit')
-        .onEdit()
-        .create();
-      
-      SpreadsheetApp.getUi().alert(
-        'トリガー設定完了（代替方法）',
-        'フォーム送信トリガーの設定に失敗したため、スプレッドシート変更トリガーを設定しました。\n\n新しい行が追加されると、自動的にトークン・URL・QRコードが生成されます。\n\n※Googleフォームと連携する場合は、フォーム側でスクリプトを設定してください。',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-    }
-    
-  } catch (error) {
-    console.error('トリガー設定エラー:', error);
-    SpreadsheetApp.getUi().alert(
-      'エラー',
-      'トリガーの設定に失敗しました: ' + error.message + '\n\n手動でGoogle Apps Scriptエディタから「トリガー」メニューで設定してください。',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  }
-}
+function showTriggerSetupGuide() {
+  const message = `🔧 トリガー設定手順ガイド
 
-/**
- * フォーム送信トリガーを削除
- */
-function deleteFormSubmitTrigger() {
-  try {
-    const triggers = ScriptApp.getProjectTriggers();
-    let deletedCount = 0;
-    
-    for (const trigger of triggers) {
-      if (trigger.getEventType() === ScriptApp.EventType.ON_FORM_SUBMIT && 
-          trigger.getHandlerFunction() === 'onFormSubmit') {
-        ScriptApp.deleteTrigger(trigger);
-        deletedCount++;
-      }
-    }
-    
-    if (deletedCount > 0) {
-      SpreadsheetApp.getUi().alert(
-        'トリガー削除完了',
-        `${deletedCount}個のフォーム送信トリガーを削除しました。`,
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-      console.log(`${deletedCount}個のフォーム送信トリガーを削除しました`);
-    } else {
-      SpreadsheetApp.getUi().alert(
-        '削除対象なし',
-        'フォーム送信トリガーは設定されていません。',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-    }
-    
-  } catch (error) {
-    console.error('トリガー削除エラー:', error);
-    SpreadsheetApp.getUi().alert(
-      'エラー',
-      'トリガーの削除に失敗しました: ' + error.message,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  }
-}
+フォームに新しい回答が来たときに自動的にトークン・URL・QRコードを生成するには、以下の手順でトリガーを設定してください：
 
-/**
- * 現在のトリガー状況を確認
- */
-function showCurrentTriggers() {
-  try {
-    const triggers = ScriptApp.getProjectTriggers();
-    let formSubmitTriggers = [];
-    let otherTriggers = [];
-    
-    for (const trigger of triggers) {
-      const info = {
-        function: trigger.getHandlerFunction(),
-        type: trigger.getEventType().toString(),
-        source: trigger.getTriggerSource().toString()
-      };
-      
-      if (trigger.getEventType() === ScriptApp.EventType.ON_FORM_SUBMIT) {
-        formSubmitTriggers.push(info);
-      } else {
-        otherTriggers.push(info);
-      }
-    }
-    
-    let message = '📋 現在のトリガー設定\n\n';
-    
-    if (formSubmitTriggers.length > 0) {
-      message += '✅ フォーム送信トリガー:\n';
-      formSubmitTriggers.forEach(trigger => {
-        message += `   - ${trigger.function}()\n`;
-      });
-    } else {
-      message += '❌ フォーム送信トリガー: 未設定\n';
-    }
-    
-    if (otherTriggers.length > 0) {
-      message += '\n🔧 その他のトリガー:\n';
-      otherTriggers.forEach(trigger => {
-        message += `   - ${trigger.function}() [${trigger.type}]\n`;
-      });
-    }
-    
-    message += '\n💡 フォーム送信トリガーが未設定の場合は、\n「フォーム送信トリガー設定」で設定してください。';
-    
-    SpreadsheetApp.getUi().alert(
-      'トリガー確認',
-      message,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-    
-  } catch (error) {
-    console.error('トリガー確認エラー:', error);
-    SpreadsheetApp.getUi().alert(
-      'エラー',
-      'トリガーの確認に失敗しました: ' + error.message,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  }
+📝 手順1: Google Apps Scriptエディタを開く
+1. スプレッドシートのメニューから「拡張機能」→「Apps Script」をクリック
+
+📝 手順2: トリガーを設定
+1. 左メニューの「トリガー」（時計アイコン）をクリック
+2. 右下の「+ トリガーを追加」をクリック
+3. 以下のように設定：
+   - 実行する関数：onFormSubmit または onEdit
+   - イベントのソース：スプレッドシートから
+   - イベントの種類：フォーム送信時 または 編集時
+4. 「保存」をクリック
+
+💡 どちらの関数を選ぶか：
+• onFormSubmit：Googleフォームと連携している場合
+• onEdit：手動でデータを入力する場合
+
+⚠️ 注意事項：
+• トリガー設定後は、新しい回答/データが追加されるたびに自動処理が実行されます
+• 既存データにはメニューの「URL一括生成」を使用してください
+
+設定完了後、フォームからテスト送信またはスプレッドシートに新しいデータを入力して動作確認してください。`;
+
+  SpreadsheetApp.getUi().alert(
+    'トリガー設定手順',
+    message,
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 /**
