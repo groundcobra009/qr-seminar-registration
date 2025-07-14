@@ -17,6 +17,9 @@ const COLUMNS = {
  * スプレッドシート開く時に実行される関数
  */
 function onOpen() {
+  // ログシートを作成（存在しない場合のみ）
+  createLogSheetIfNotExists();
+  
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('QRコードセミナー受付システム')
     .addItem('📋 システム設定', 'showSettingsDialog')
@@ -36,6 +39,7 @@ function onOpen() {
     .addSeparator()
     .addItem('📊 受付状況確認', 'showReceptionStatus')
     .addItem('🔍 システムチェック', 'showHealthCheck')
+    .addItem('📋 受付ログ確認', 'showReceptionLogs')
     .addSeparator()
     .addItem('📖 使い方ガイド', 'showHelpDialog')
     .addToUi();
@@ -184,8 +188,9 @@ function processReception(token) {
       // 受付状態をTRUEに更新
       sheet.getRange(row, COLUMNS.RECEPTION).setValue(true);
       
-      // ログ記録
-      logReception(token, name);
+      // メールアドレスも取得してログ記録
+      const email = data[i][COLUMNS.EMAIL - 1] || '';
+      logReception(token, name, email, '成功');
       
       return {
         success: true,
@@ -485,11 +490,93 @@ function createErrorResponse(message) {
 }
 
 /**
+ * ログシートを作成（存在しない場合のみ）
+ */
+function createLogSheetIfNotExists() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    let logSheet = spreadsheet.getSheetByName('受付ログ');
+    
+    if (!logSheet) {
+      // ログシートを作成
+      logSheet = spreadsheet.insertSheet('受付ログ');
+      
+      // ヘッダー行を設定
+      const headers = [
+        '受付日時',
+        '氏名', 
+        'メールアドレス',
+        'トークン',
+        'IPアドレス',
+        'ユーザーエージェント',
+        '受付状況'
+      ];
+      
+      logSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      
+      // ヘッダー行のスタイル設定
+      const headerRange = logSheet.getRange(1, 1, 1, headers.length);
+      headerRange.setBackground('#4CAF50');
+      headerRange.setFontColor('white');
+      headerRange.setFontWeight('bold');
+      headerRange.setHorizontalAlignment('center');
+      
+      // 列幅を調整
+      logSheet.setColumnWidth(1, 150); // 受付日時
+      logSheet.setColumnWidth(2, 120); // 氏名
+      logSheet.setColumnWidth(3, 200); // メールアドレス
+      logSheet.setColumnWidth(4, 150); // トークン
+      logSheet.setColumnWidth(5, 120); // IPアドレス
+      logSheet.setColumnWidth(6, 250); // ユーザーエージェント
+      logSheet.setColumnWidth(7, 100); // 受付状況
+      
+      console.log('受付ログシートを作成しました');
+    }
+  } catch (error) {
+    console.error('ログシート作成エラー:', error);
+  }
+}
+
+/**
  * 受付ログを記録
  */
-function logReception(token, name) {
+function logReception(token, name, email = '', status = '成功') {
   try {
-    console.log(`[受付ログ] ${new Date().toISOString()} - トークン: ${token}, 氏名: ${name}`);
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    let logSheet = spreadsheet.getSheetByName('受付ログ');
+    
+    // ログシートが存在しない場合は作成
+    if (!logSheet) {
+      createLogSheetIfNotExists();
+      logSheet = spreadsheet.getSheetByName('受付ログ');
+    }
+    
+    // 新しい行を追加
+    const newRow = logSheet.getLastRow() + 1;
+    const timestamp = new Date();
+    
+    // ログデータを設定
+    const logData = [
+      timestamp.toLocaleString('ja-JP'), // 受付日時
+      name || '',                        // 氏名
+      email || '',                       // メールアドレス
+      token || '',                       // トークン
+      '',                                // IPアドレス（Web経由でないため空）
+      '',                                // ユーザーエージェント（Web経由でないため空）
+      status                             // 受付状況
+    ];
+    
+    logSheet.getRange(newRow, 1, 1, logData.length).setValues([logData]);
+    
+    // 受付成功の場合は背景色を緑に
+    if (status === '成功') {
+      logSheet.getRange(newRow, 1, 1, logData.length).setBackground('#e8f5e8');
+    } else {
+      logSheet.getRange(newRow, 1, 1, logData.length).setBackground('#ffeaea');
+    }
+    
+    console.log(`[受付ログ] ${timestamp.toISOString()} - トークン: ${token}, 氏名: ${name}, 状況: ${status}`);
+    
   } catch (error) {
     console.error('ログ記録エラー:', error);
   }
@@ -517,6 +604,76 @@ function checkReceptionStatus() {
   
   console.log(`受付状況: ${received}/${total} 人が受付完了`);
   return { total, received };
+}
+
+/**
+ * 受付ログを表示
+ */
+function showReceptionLogs() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const logSheet = spreadsheet.getSheetByName('受付ログ');
+    
+    if (!logSheet) {
+      SpreadsheetApp.getUi().alert(
+        '受付ログ',
+        '受付ログシートが見つかりません。まだ受付処理が実行されていない可能性があります。',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      SpreadsheetApp.getUi().alert(
+        '受付ログ',
+        'まだ受付ログがありません。',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // 最新10件を表示
+    let message = '📋 受付ログ（最新10件）\n\n';
+    const startRow = Math.max(1, data.length - 10);
+    
+    for (let i = data.length - 1; i >= startRow; i--) {
+      const row = data[i];
+      if (i === 0) continue; // ヘッダー行をスキップ
+      
+      const timestamp = row[0];
+      const name = row[1];
+      const email = row[2];
+      const token = row[3];
+      const status = row[6];
+      
+      message += `🕐 ${timestamp}\n`;
+      message += `👤 ${name}\n`;
+      if (email) {
+        message += `📧 ${email}\n`;
+      }
+      message += `🔑 ${token}\n`;
+      message += `✅ ${status}\n`;
+      message += '─────────────\n';
+    }
+    
+    message += `\n📊 総受付件数: ${data.length - 1}件`;
+    message += '\n\n詳細は「受付ログ」シートでご確認ください。';
+    
+    SpreadsheetApp.getUi().alert(
+      '受付ログ確認',
+      message,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    
+  } catch (error) {
+    console.error('受付ログ表示エラー:', error);
+    SpreadsheetApp.getUi().alert(
+      'エラー',
+      '受付ログの表示に失敗しました: ' + error.message,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  }
 }
 
 /**
