@@ -144,17 +144,25 @@ function generateUrls() {
 function doGet(e) {
   try {
     const token = e.parameter.token;
+    const action = e.parameter.action;
     
     if (!token) {
       return createErrorResponse('無効なアクセスです。トークンが見つかりません。');
     }
     
-    const result = processReception(token);
-    
-    if (result.success) {
-      return createSuccessResponse(result.name, token);
+    // actionパラメータで処理を分岐
+    if (action === 'process') {
+      // 実際の受付処理
+      const result = processReception(token);
+      
+      if (result.success) {
+        return createSuccessResponse(result.name, token);
+      } else {
+        return createErrorResponse(result.message);
+      }
     } else {
-      return createErrorResponse(result.message);
+      // ローディング画面を表示
+      return createLoadingResponse(token);
     }
     
   } catch (error) {
@@ -162,6 +170,7 @@ function doGet(e) {
     return createErrorResponse('システムエラーが発生しました。');
   }
 }
+
 
 /**
  * 受付処理のロジック
@@ -409,6 +418,105 @@ function createSuccessResponse(name, token) {
           受付日時: ${new Date().toLocaleString('ja-JP')}
         </div>
       </div>
+    </body>
+    </html>
+  `;
+  
+  return HtmlService.createHtmlOutput(html);
+}
+
+/**
+ * ローディング画面のHTMLレスポンス
+ */
+function createLoadingResponse(token) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>受付処理中</title>
+      <style>
+        body {
+          font-family: 'Helvetica Neue', Arial, sans-serif;
+          margin: 0;
+          padding: 20px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .container {
+          background: white;
+          padding: 60px 40px;
+          border-radius: 15px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+          text-align: center;
+          max-width: 500px;
+          width: 100%;
+        }
+        .loading-icon {
+          font-size: 4em;
+          margin-bottom: 30px;
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.7; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        h1 {
+          color: #333;
+          margin-bottom: 20px;
+          font-size: 2em;
+        }
+        .message {
+          color: #666;
+          font-size: 1.2em;
+          line-height: 1.6;
+          margin-bottom: 30px;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #667eea;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 20px auto;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .footer {
+          color: #999;
+          font-size: 0.9em;
+          margin-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="loading-icon">🎫</div>
+        <h1>受付処理中</h1>
+        <div class="message">
+          QRコードセミナーの受付を処理しています。<br>
+          しばらくお待ちください...
+        </div>
+        <div class="spinner"></div>
+        <div class="footer">
+          同窓会実行委員会
+        </div>
+      </div>
+      
+      <script>
+        // 2秒後に実際の受付処理にリダイレクト
+        setTimeout(function() {
+          window.location.href = 'https://script.google.com/macros/s/AKfycbxCCwMm-LYJRr-v4OseL0pscN5w3PbO727qTvwyJCvxu814X5ksWS6pXwbxuK5HQcEt/exec?action=process&token=${token}';
+        }, 2000);
+      </script>
     </body>
     </html>
   `;
